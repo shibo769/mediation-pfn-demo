@@ -1,9 +1,40 @@
-# Amortized Inference for Causal Mediation
+# Amortized Inference and Post-Training for Causal Mediation
 
 A small, self-contained demonstration of natural indirect effect (NIE)
 estimation with a mediation score and cross-fitted nuisance predictions. The
 research pipeline combines a tabular foundation model with learned
-standardized-error distributions to construct confidence intervals.
+standardized-error distributions to construct confidence intervals. Its
+post-training pipeline learns uncertainty heads and experiments with SFT,
+DPO, and reinforcement learning with verifiable rewards (RLVR) for routing
+between them.
+
+## Post-training at a glance
+
+After nuisance prediction with the 13.5M-parameter PFN, we compute a
+cross-fitted mediation-score estimate and standard error. The PFN is frozen
+while the post-training modules learn to represent the standardized NIE
+estimation error. For synthetic training tasks, the target NIE is known and
+provides supervision; it is not used at inference time.
+
+| Component | What it learns |
+| --- | --- |
+| **Error heads** | Global, undercoverage-oriented, and overcoverage-oriented distributions of standardized estimation error. |
+| **SFT** | Router weights for combining the error distributions, trained on synthetic error labels. |
+| **DPO** | Preferences between candidate router weights, constructed from simulated group-level interval rewards. |
+| **RLVR** | A router policy updated using verifiable simulated rewards for interval quality. |
+
+The implemented comparisons include SFT → DPO → RLVR, SFT → RLVR, and a
+matched additional-SFT control. At inference, the released pipeline combines
+the two highest-weight heads and uses their mixture quantiles to form the
+interval. The released `mixture_sft.pt` contains the three trained error heads
+and the SFT router; it does not contain the DPO or RLVR router checkpoints.
+In the development selection for this release, all three router candidates
+retained their initial parameters. This does not establish a post-training
+improvement or an OOD result.
+
+The newer component-specific, calibration, and distribution-shift
+post-training experiments remain under evaluation and are not included in
+this demo. See [Training scope](#training-scope) for the code and its inputs.
 
 This repository provides two paths:
 
@@ -118,6 +149,21 @@ experiment-scheduling, or evaluation pipeline, so these entry points alone
 do not reproduce the research experiments or the newer post-training studies.
 No real-world dataset is included.
 
+Given a compatible train/development cache, a CPU training run can be started
+as follows. The output directory must not already exist:
+
+```bash
+python -m mediation_demo.train_mixture \
+  --cache path/to/train_dev_cache.npz \
+  --output path/to/new_output_dir --seed 42 --device cpu --top2
+```
+
+The `train_mixture` entry point trains the continuous mixture used by the
+released inference pipeline. `posttrain` contains a separate categorical-router
+experiment; its checkpoints are not interchangeable with the released mixture.
+The public repository does not provide the research cache needed by these
+commands, so preparing a compatible cache requires additional research code.
+
 Training a new backbone does not train a matching uncertainty mixture; do not
 pair newly trained weights with the released mixture without additional
 training and validation.
@@ -161,7 +207,7 @@ construction.
 ## Repository layout
 
 ```text
-mediation_demo/  Synthetic data, nuisance model, mediation score, and intervals
+mediation_demo/  Nuisance model, score, interval heads, and post-training code
 docs/            Method notes
 tests/           Small, reproducible checks
 pyproject.toml   Package metadata and dependencies
