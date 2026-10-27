@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mediation-pfn-demo"
+version = "0.1.0"
+description = "Research demo for cross-fitted mediation inference with a tabular foundation model"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "scipy>=1.10", "torch>=2.1"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+mediation-demo = "mediation_demo.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["mediation_demo*"]
