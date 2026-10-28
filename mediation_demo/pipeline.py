@@ -52,3 +52,32 @@ def oracle_demo(table, mechanism, *, alpha=.05):
             "interval": [score["lo"], score["hi"]], "truth": mechanism.theta_NIE,
             "nominal_coverage": 1-alpha, "rows": score["used_rows"],
             "mode": "oracle_nuisance_wald_simulation_only"}
+
+
+def estimate_consistency(table, backbone_path, adapter_path, ci_directory, *,
+                         alpha=.05, fold_seed=2026, view_seed=2027, device="cpu"):
+    """Apply a frozen consistency adapter and its independently trained CI head.
+
+    The supplied adapter must have been trained for this backbone; the CI head
+    is checked against the exact adapter SHA. Direct eta is a training-only
+    auxiliary output, not a nuisance input to the EIF. A trained adapter and
+    matching CI head are not included in the current release.
+    """
+    from .consistency import adapted_score, load_adapter, sha256
+    from .consistency_ci import ci, load_ci
+
+    if not 0 < alpha < 1:
+        raise ValueError("alpha must be between 0 and 1")
+    # Match the audited research evaluator: keep the original observations in
+    # float64 for EIF calculation; crossfit_views converts model inputs itself.
+    rows = observed_rows(table, dtype=np.float64)
+    folds = make_folds(len(rows), fold_seed)
+    model = load_checkpoint(backbone_path, device=device)
+    prediction = crossfit_views(model, rows, folds, seed=view_seed, device=device)
+    score, features = adapted_score(rows, prediction, load_adapter(adapter_path), alpha=alpha)
+    head = load_ci(ci_directory, sha256(adapter_path))
+    result = ci(features, score["estimate"], score["se"], head, alpha=alpha)
+    return {"estimate": result["point"], "score_estimate": score["estimate"],
+            "standard_error": score["se"], "interval": result["interval"],
+            "nominal_coverage": 1-alpha, "rows": score["used_rows"],
+            "folds": 2, "support_views": 3, "clip_rate": score["clipping_rate"]}

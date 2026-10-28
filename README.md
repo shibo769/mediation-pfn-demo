@@ -22,6 +22,7 @@ provides supervision; it is not used at inference time.
 | **SFT** | Router weights for combining the error distributions, trained on synthetic error labels. |
 | **DPO** | Preferences between candidate router weights, constructed from simulated group-level interval rewards. |
 | **RLVR** | A router policy updated using verifiable simulated rewards for interval quality. |
+| **Mediation consistency** | A frozen-PFN nuisance adapter learns the mediation identity with an auxiliary outcome head. |
 
 The implemented comparisons include SFT → DPO → RLVR, SFT → RLVR, and a
 matched additional-SFT control. At inference, the released pipeline combines
@@ -34,7 +35,9 @@ improvement or an OOD result.
 
 The newer component-specific, calibration, and distribution-shift
 post-training experiments remain under evaluation and are not included in
-this demo. See [Training scope](#training-scope) for the code and its inputs.
+this demo. The separate mediation-consistency path has a matching 1M backbone,
+adapter, and CI head in the [v0.2.0 release](https://github.com/shibo769/mediation-pfn-demo/releases/tag/v0.2.0).
+See [consistency notes](docs/CONSISTENCY.md) for its inputs and evaluation status.
 
 This repository provides two paths:
 
@@ -76,6 +79,25 @@ Then run the pretrained model on a synthetic table:
 python -m mediation_demo --mode pfn \
   --checkpoint weights/backbone_13m.pt --mixture weights/mixture_sft.pt
 ```
+
+For the separate 1M mediation-consistency path, download and unpack its matched
+backbone, adapter, and retrained CI head:
+
+```bash
+gh release download v0.2.0 --repo shibo769/mediation-pfn-demo \
+  --pattern consistency_1m_bundle.zip --dir weights
+python -m zipfile -e weights/consistency_1m_bundle.zip weights/consistency_1m
+python -m mediation_demo --mode pfn \
+  --checkpoint weights/consistency_1m/backbone_1m.pt \
+  --consistency-adapter weights/consistency_1m/consistency_adapter_1m.pt \
+  --consistency-ci-dir weights/consistency_1m/consistency_ci_1m
+```
+
+The bundle SHA-256 is
+`d5d7fa87345965f70f527377531fe5cd9e0344cbd88cb08daf2e0c68176f3532`.
+It contains the DEV-selected lambda=1 adapter and its separately retrained
+CI head, trained with synthetic-oracle supervision; see the
+[experiment details](docs/CONSISTENCY.md#experiment-reported-so-far).
 
 The backbone and mixture must come from the same fitted pipeline. If these
 files are unavailable, the simulation demonstration still runs; its oracle

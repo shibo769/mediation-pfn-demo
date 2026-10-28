@@ -9,7 +9,7 @@ import sys
 import numpy as np
 
 from .data import FAMILIES, sample_mechanism
-from .pipeline import estimate, oracle_demo
+from .pipeline import estimate, estimate_consistency, oracle_demo
 
 
 def read_csv(path):
@@ -46,11 +46,17 @@ def main():
                         help="Trusted 13M backbone checkpoint")
     parser.add_argument("--mixture", default="weights/mixture_sft.pt",
                         help="Trusted matching post-trained mixture checkpoint")
+    parser.add_argument("--consistency-adapter", help="Frozen consistency adapter checkpoint")
+    parser.add_argument("--consistency-ci-dir", help="Matching frozen CI-head directory")
     parser.add_argument("--csv", help="Numeric input table; requires --mode pfn")
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
     if args.mode == "oracle" and args.csv:
         parser.error("Oracle mode uses synthetic truth and cannot analyze a real CSV")
+    if bool(args.consistency_adapter) != bool(args.consistency_ci_dir):
+        parser.error("Pass both --consistency-adapter and --consistency-ci-dir")
+    if args.mode == "oracle" and args.consistency_adapter:
+        parser.error("Consistency inference requires --mode pfn")
     if not 0 < args.alpha < 1:
         parser.error("--alpha must be between 0 and 1")
     if args.csv:
@@ -61,9 +67,15 @@ def main():
     if args.mode == "oracle":
         result = oracle_demo(table, mechanism, alpha=args.alpha)
     else:
-        result = estimate(table, args.checkpoint, args.mixture,
-                          alpha=args.alpha, device=args.device)
-        result["mode"] = "pretrained_pfn_with_routed_error_mixture"
+        if args.consistency_adapter:
+            result = estimate_consistency(table, args.checkpoint, args.consistency_adapter,
+                                          args.consistency_ci_dir, alpha=args.alpha,
+                                          device=args.device)
+            result["mode"] = "pretrained_pfn_with_consistency_adapter_and_ci_head"
+        else:
+            result = estimate(table, args.checkpoint, args.mixture,
+                              alpha=args.alpha, device=args.device)
+            result["mode"] = "pretrained_pfn_with_routed_error_mixture"
         if mechanism is not None:
             result["synthetic_truth_for_evaluation_only"] = mechanism.theta_NIE
     print(json.dumps(result, indent=2, allow_nan=False))
